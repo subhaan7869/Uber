@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Uber Driver" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>Uber Driver Dashboard</title>
+    <style>
+      /* Full-bleed Native PWA Touch & Viewport Inset Handling */
+      html, body, #root {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #000000;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+      :root {
+        --sat: env(safe-area-inset-top, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+      }
+    </style>
+    <!-- Google AdSense Auto Ads integration with pub-3590152533738920 (Loaded safely to prevent cross-origin iframe issues) -->
+    <script>
+      (function() {
+        try {
+          // Check if we are inside an iframe (like AI Studio preview)
+          var isIframe = window.self !== window.top;
+          if (!isIframe) {
+            var script = document.createElement('script');
+            script.async = true;
+            script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3590152533738920";
+            script.crossOrigin = "anonymous";
+            script.onerror = function() {
+              console.warn("Google AdSense script could not be loaded (it might be blocked by an ad-blocker).");
+            };
+            document.head.appendChild(script);
+          } else {
+            console.log("Google AdSense: Skipped loading script inside sandbox preview iframe to prevent cross-origin DOM exceptions.");
+          }
+        } catch (e) {
+          console.error("Google AdSense: Error during dynamic load checks:", e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div style="background: #000; height: 100vh; width: 100vw; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #666; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <!-- Official Hyper Driver App Icon Splash -->
+        <svg width="136" height="136" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-bottom: 24px;">
+          <defs>
+            <linearGradient id="bgInnerGradSplash" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#0D1930" />
+              <stop offset="45%" stop-color="#070D19" />
+              <stop offset="100%" stop-color="#03050A" />
+            </linearGradient>
+            <linearGradient id="borderGradSplash" x1="36" y1="120" x2="476" y2="392" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00AEFF" />
+              <stop offset="50%" stop-color="#0077FF" />
+              <stop offset="100%" stop-color="#0040FF" />
+            </linearGradient>
+            <linearGradient id="speedBarTopSplash" x1="156" y1="165" x2="245" y2="165" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00C8FF" />
+              <stop offset="100%" stop-color="#0055FF" />
+            </linearGradient>
+            <linearGradient id="speedBarMidSplash" x1="120" y1="202" x2="225" y2="202" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00DCFF" />
+              <stop offset="100%" stop-color="#0051FF" />
+            </linearGradient>
+            <linearGradient id="speedBarBotSplash" x1="142" y1="239" x2="225" y2="239" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00B8FF" />
+              <stop offset="100%" stop-color="#0044FF" />
+            </linearGradient>
+            <linearGradient id="hGradSplash" x1="256" y1="125" x2="256" y2="275" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF" />
+              <stop offset="100%" stop-color="#E6EEF8" />
+            </linearGradient>
+            <filter id="borderGlowSplash" x="-10%" y="-10%" width="120%" height="120%">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+          <rect x="38" y="38" width="436" height="436" rx="102" fill="url(#bgInnerGradSplash)" stroke="url(#borderGradSplash)" stroke-width="12" filter="url(#borderGlowSplash)" />
+          <rect x="157" y="154" width="84" height="22" rx="11" fill="url(#speedBarTopSplash)" />
+          <rect x="121" y="191" width="98" height="22" rx="11" fill="url(#speedBarMidSplash)" />
+          <rect x="142" y="228" width="76" height="22" rx="11" fill="url(#speedBarBotSplash)" />
+          <path d="M 244 128 L 286 128 L 271 182 L 326 182 L 341 128 L 383 128 L 343 272 L 301 272 L 318 212 L 263 212 L 246 272 L 204 272 Z" fill="url(#hGradSplash)" />
+          <text x="256" y="355" fill="#FFFFFF" font-family="'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="88" font-weight="900" letter-spacing="-1.5" text-anchor="middle">Hyper</text>
+          <text x="262" y="404" fill="#009EFF" font-family="'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="30" font-weight="800" letter-spacing="14" text-anchor="middle">DRIVER</text>
+        </svg>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 12px; height: 12px; border: 2px solid #009eff; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          <p style="font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 3px; color: #009eff;">Initializing System</p>
+        </div>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

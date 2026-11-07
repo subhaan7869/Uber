@@ -1,0 +1,95 @@
+  // Generate Radar Orders periodically when idle
+  useEffect(() => {
+    if (!user.isOnline || isNavigating || activeOrders.length >= 4 || pendingOrder || radarDisplayMode === 'none') {
+      if (radarOrders.length > 0) {
+        setRadarOrders([]);
+      }
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    
+    const scheduleNextRadarOrder = () => {
+      let baseWait = 5000;
+      let randomRange = 10000;
+      if (busynessMode === 'Low') {
+        baseWait = 40000; randomRange = 60000;
+      } else if (busynessMode === 'High') {
+        baseWait = 3000; randomRange = 5000;
+      }
+
+      const waitTime = baseWait + Math.random() * randomRange;
+
+      timeoutId = setTimeout(() => {
+        if (radarOrders.length >= 3 || isOnBreak) {
+          scheduleNextRadarOrder();
+          return;
+        }
+
+        if (Math.random() > 0.3) {
+          const countToGen = Math.random() > 0.6 ? 2 : 1;
+          const generated: Order[] = [];
+          
+          for (let i = 0; i < countToGen; i++) {
+            if (radarOrders.length + generated.length < 3) {
+              const newOrder = generateSmartOrder();
+              if (newOrder) {
+                newOrder.isMatching = true;
+                const priceModifier = 0.8 + Math.random() * 0.5;
+                newOrder.estimatedPay = Number((newOrder.estimatedPay * priceModifier).toFixed(2));
+                newOrder.estimatedDistance = Number((newOrder.estimatedDistance * (0.85 + Math.random() * 0.3)).toFixed(1));
+                newOrder.restaurantLocation = {
+                  latitude: newOrder.restaurantLocation.latitude + (Math.random() - 0.5) * 0.004,
+                  longitude: newOrder.restaurantLocation.longitude + (Math.random() - 0.5) * 0.004
+                };
+                generated.push(newOrder);
+              }
+            }
+          }
+          
+          if (generated.length > 0) {
+            if (!pendingOrder) {
+              setPendingOrder(generated[0]);
+              setOrderExpiryTimer(15);
+              playHyperSound('order');
+              if (generated.length > 1) {
+                setRadarOrders(prev => {
+                  const finalOrders = [...prev];
+                  generated.slice(1).forEach(item => {
+                    if (finalOrders.length < 4 && !finalOrders.some(o => o.id === item.id)) {
+                      finalOrders.push(item);
+                      setTimeout(() => {
+                        setRadarOrders(curr => curr.filter(o => o.id !== item.id));
+                      }, 25000);
+                    }
+                  });
+                  return finalOrders;
+                });
+              }
+            } else {
+              setRadarOrders(prev => {
+                const finalOrders = [...prev];
+                generated.forEach(item => {
+                  if (finalOrders.length < 4 && !finalOrders.some(o => o.id === item.id)) {
+                    finalOrders.push(item);
+                    setTimeout(() => {
+                      setRadarOrders(curr => curr.filter(o => o.id !== item.id));
+                    }, 25000);
+                  }
+                });
+                return finalOrders;
+              });
+              playHyperSound('radar');
+            }
+          }
+        }
+        
+        scheduleNextRadarOrder();
+      }, waitTime);
+    };
+
+    scheduleNextRadarOrder();
+
+    return () => clearTimeout(timeoutId);
+  }, [user.isOnline, isNavigating, activeOrders.length, pendingOrder, isOnBreak, radarOrders.length, radarDisplayMode, playHyperSound, busynessMode, generateSmartOrder]);
+

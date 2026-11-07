@@ -1,0 +1,6 @@
+{
+  "name": "Hyper Driver",
+  "description": "A high-fidelity simulation of the Dual Dispatch (Uber & Bolt) driver app for testing the delivery experience.",
+  "requestFramePermissions": ["geolocation", "camera", "notifications", "screen-wake-lock", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

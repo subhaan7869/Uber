@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: #000;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.custom-scrollbar::-webkit-scrollbar, .no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.custom-scrollbar, .no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* OpenStreetMap / Leaflet visible attribution styling */
+.leaflet-control-attribution {
+  background: rgba(10, 12, 18, 0.75) !important;
+  color: #94a3b8 !important;
+  font-size: 9px !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  margin: 6px !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.leaflet-control-attribution a {
+  color: #60a5fa !important;
+  text-decoration: none;
+}
+.leaflet-control-attribution a:hover {
+  text-decoration: underline;
+}
+
+/* Hyper Blue & Black Navigation Styling for OpenStreetMap (100% Free, No Watermark, No API Key Required) */
+.leaflet-container {
+  background-color: #020617 !important;
+}
+
+.dark-tiles,
+.dark-tiles .leaflet-container {
+  background-color: #020617 !important;
+}
+
+.dark-tiles .leaflet-tile-pane {
+  /* Pitch black background with electric blue roads and waterways */
+  filter: invert(100%) hue-rotate(210deg) saturate(320%) brightness(55%) contrast(150%);
+  background-color: #020617 !important;
+}
+
+.dark-tiles .leaflet-tile {
+  filter: invert(100%) hue-rotate(210deg) saturate(320%) brightness(55%) contrast(150%);
+}
+
+

@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores driver profile information and face verification data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the driver" },
+        "email": { "type": "string", "description": "Email address" },
+        "rating": { "type": "number", "description": "Driver rating" },
+        "tier": { "type": "string", "enum": ["Blue", "Gold", "Platinum", "Diamond"], "description": "Hyper Pro Tier" },
+        "points": { "type": "number", "description": "Hyper Pro points" },
+        "deliveries": { "type": "number", "description": "Total deliveries completed" },
+        "walletBalance": { "type": "number", "description": "Current wallet balance" },
+        "faceSignature": { "type": "string", "description": "Simulated face recognition signature" },
+        "profilePic": { "type": "string", "description": "URL to profile picture" },
+        "documentsUploaded": { "type": "boolean", "description": "Whether documents are uploaded" },
+        "faceVerified": { "type": "boolean", "description": "Whether face is verified" },
+        "documentExpiries": { "type": "object", "description": "Map of document names to expiry dates" },
+        "fcmToken": { "type": "string", "description": "Firebase Cloud Messaging push token" },
+        "latitude": { "type": "number", "description": "Last updated GPS latitude of the driver" },
+        "longitude": { "type": "number", "description": "Last updated GPS longitude of the driver" },
+        "heading": { "type": "number", "description": "Driver direction heading in degrees" },
+        "isOnline": { "type": "boolean", "description": "Whether driver is actively online on shift" },
+        "onTimeRate": { "type": "number", "description": "Driver on-time rating percentage" },
+        "todayEarnings": { "type": "number", "description": "Driver today's cash earnings" },
+        "todayDeliveries": { "type": "number", "description": "Driver today's completed deliveries" }
+      },
+      "required": ["uid", "name", "faceSignature"]
+    },
+    "ScheduledOrder": {
+      "title": "Scheduled Order",
+      "description": "Orders scheduled by the driver for a specific time.",
+      "type": "object",
+      "properties": {
+        "driverUid": { "type": "string", "description": "UID of the driver who scheduled the order" },
+        "restaurantName": { "type": "string", "description": "Name of the restaurant" },
+        "scheduledTime": { "type": "string", "format": "date-time", "description": "Time the order is scheduled for" },
+        "status": { "type": "string", "enum": ["pending", "active", "completed"], "description": "Status of the scheduled order" },
+        "estimatedPay": { "type": "number", "description": "Estimated earnings" }
+      },
+      "required": ["driverUid", "restaurantName", "scheduledTime"]
+    },
+    "CarPlaySync": {
+      "title": "CarPlay Sync",
+      "description": "Synchronizes state between phone and CarPlay display for remote monitoring.",
+      "type": "object",
+      "properties": {
+        "driverUid": { "type": "string", "description": "UID of the driver owner" },
+        "isActive": { "type": "boolean", "description": "Whether CarPlay remote session is active" },
+        "activeOrderId": { "type": "string", "description": "Optional ID of the currently active order being viewed", "nullable": true },
+        "isNavigating": { "type": "boolean", "description": "Whether the driver is currently in navigation mode" },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "Server-side timestamp of the last update" }
+      },
+      "required": ["driverUid", "isActive"]
+    },
+    "ActiveOrder": {
+      "title": "Active Order",
+      "description": "An order currently being handled by the driver.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverUid": { "type": "string" },
+        "restaurantName": { "type": "string" },
+        "customerName": { "type": "string" },
+        "status": { "type": "string", "enum": ["accepted", "picked_up", "arrived", "completed"] },
+        "estimatedPay": { "type": "number" },
+        "items": { "type": "array", "items": { "type": "string" } },
+        "pin": { "type": "string" },
+        "estimatedTime": { "type": "number" },
+        "estimatedDistance": { "type": "number" }
+      },
+      "required": ["id", "driverUid", "restaurantName", "status"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "UserProfile",
+      "description": "Collection of driver profiles"
+    },
+    "scheduled_orders": {
+      "schema": "ScheduledOrder",
+      "description": "Collection of scheduled orders"
+    },
+    "carplay_sync": {
+      "schema": "CarPlaySync",
+      "description": "Real-time synchronization for CarPlay"
+    },
+    "active_orders": {
+      "schema": "ActiveOrder",
+      "description": "Real-time tracking of active deliveries"
+    }
+  }
+}

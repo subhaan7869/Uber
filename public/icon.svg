@@ -1,0 +1,98 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Outer Black Background -->
+    <linearGradient id="bgInnerGrad" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0D1930" />
+      <stop offset="45%" stop-color="#070D19" />
+      <stop offset="100%" stop-color="#03050A" />
+    </linearGradient>
+
+    <!-- Squircle Neon Blue/Cyan Border Gradient -->
+    <linearGradient id="borderGrad" x1="36" y1="120" x2="476" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00AEFF" />
+      <stop offset="50%" stop-color="#0077FF" />
+      <stop offset="100%" stop-color="#0040FF" />
+    </linearGradient>
+
+    <!-- Speed Bars Gradient (Cyan Left to Royal Blue Right) -->
+    <linearGradient id="speedBarTop" x1="156" y1="165" x2="245" y2="165" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C8FF" />
+      <stop offset="100%" stop-color="#0055FF" />
+    </linearGradient>
+    <linearGradient id="speedBarMid" x1="120" y1="202" x2="225" y2="202" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00DCFF" />
+      <stop offset="100%" stop-color="#0051FF" />
+    </linearGradient>
+    <linearGradient id="speedBarBot" x1="142" y1="239" x2="225" y2="239" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00B8FF" />
+      <stop offset="100%" stop-color="#0044FF" />
+    </linearGradient>
+
+    <!-- Subtle White-to-Ice Gradient on the H -->
+    <linearGradient id="hGrad" x1="256" y1="125" x2="256" y2="275" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#E6EEF8" />
+    </linearGradient>
+
+    <!-- Subtle Glow Filter for Border -->
+    <filter id="borderGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Solid Black Canvas -->
+  <rect width="512" height="512" fill="#000000" />
+
+  <!-- Rounded Squircle App Icon Frame -->
+  <rect
+    x="38"
+    y="38"
+    width="436"
+    height="436"
+    rx="102"
+    fill="url(#bgInnerGrad)"
+    stroke="url(#borderGrad)"
+    stroke-width="12"
+    filter="url(#borderGlow)"
+  />
+
+  <!-- Three Horizontal Rounded Speed Bars on Left of H -->
+  <!-- Top Bar -->
+  <rect x="157" y="154" width="84" height="22" rx="11" fill="url(#speedBarTop)" />
+  <!-- Middle Bar (Longest) -->
+  <rect x="121" y="191" width="98" height="22" rx="11" fill="url(#speedBarMid)" />
+  <!-- Bottom Bar -->
+  <rect x="142" y="228" width="76" height="22" rx="11" fill="url(#speedBarBot)" />
+
+  <!-- Bold Slanted White 'H' -->
+  <!-- Left Stem, Crossbar, and Right Stem as one crisp geometric path -->
+  <path
+    d="M 244 128 L 286 128 L 271 182 L 326 182 L 341 128 L 383 128 L 343 272 L 301 272 L 318 212 L 263 212 L 246 272 L 204 272 Z"
+    fill="url(#hGrad)"
+  />
+
+  <!-- "Hyper" Typography -->
+  <text
+    x="256"
+    y="355"
+    fill="#FFFFFF"
+    font-family="'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    font-size="88"
+    font-weight="900"
+    letter-spacing="-1.5"
+    text-anchor="middle"
+  >Hyper</text>
+
+  <!-- "D R I V E R" Typography -->
+  <text
+    x="262"
+    y="404"
+    fill="#009EFF"
+    font-family="'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    font-size="30"
+    font-weight="800"
+    letter-spacing="14"
+    text-anchor="middle"
+  >DRIVER</text>
+</svg>
