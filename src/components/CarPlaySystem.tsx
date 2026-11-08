@@ -34,6 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Order, UserProfile, Location, DestinationFilter } from '../types';
 import { MediaControls } from './MediaControls';
 import { calculatePayRate } from '../utils/payRate';
+import { DynamicIslandAndVoice } from './DynamicIslandAndVoice';
 
 export interface CarPlaySystemProps {
   activeOrders: Order[];
@@ -246,6 +247,16 @@ export const CarPlaySystem: React.FC<CarPlaySystemProps> = ({
               <span>Normal Job 🚗</span>
             </button>
           )}
+
+          {/* Dynamic Island Mic Keep-Alive, Voice Dispatch & Universal PiP Floating HUD */}
+          <DynamicIslandAndVoice
+            isOnline={user?.isOnline ?? true}
+            pendingOrder={pendingOrder}
+            onAcceptOrder={onAcceptOrder}
+            onDeclineOrder={onDeclineOrder}
+            todayEarningsTotal={todayEarningsTotal}
+            onToggleOnline={onToggleOnline}
+          />
 
           {/* Service Limits Info Button */}
           <button

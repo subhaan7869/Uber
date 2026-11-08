@@ -1170,6 +1170,16 @@ const SideMenu = ({
               },
               badge: <span className="ml-auto text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Audio</span>
             },
+            { 
+              icon: <Smartphone size={20} className="text-emerald-400" />, 
+              label: "Dynamic Island & Multi-Device", 
+              action: () => { 
+                setIsSideMenuOpen(false); 
+                setIsCarPlaySynced(true);
+                setCurrentScreen('carplay_dashboard');
+              },
+              badge: <span className="ml-auto text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">iPad • PiP</span>
+            },
           ].map((item, i) => (
             <button 
               key={`side-menu-item-new-${i}`}
@@ -11200,9 +11210,14 @@ export default function App() {
       return pool[Math.floor(Math.random() * pool.length)];
     };
 
-    // 1. Generate 5 candidate orders
-    const candidates = Array.from({ length: 5 }).map(() => {
-      const type = getJobType();
+    // 1. Strict 1 in 15 probability for Intercity jobs (User Requirement: 1 in 15 chance)
+    const isIntercityEligible = enabledServices.includes('intercity') && vehicleType === 'Car';
+    const isIntercityRoll = isIntercityEligible && (Math.floor(Math.random() * 15) === 0);
+
+    // 2. Generate 5 candidate orders
+    const candidates = Array.from({ length: 5 }).map((_, candIndex) => {
+      // If this roll was an Intercity job (1 in 15 chance), force ride type for the primary candidate
+      const type = (isIntercityRoll && candIndex === 0) ? 'ride' : getJobType();
       
       let orderBrand: 'uber' | 'hyper' = 'uber';
       if (uberOnline && hyperOnline) {
@@ -11216,18 +11231,22 @@ export default function App() {
       let variant = 'Uber Eats 🍔';
       if (orderBrand === 'uber') {
         if (type === 'ride') {
-          const ridePool: string[] = [];
-          if (enabledServices.includes('rideshare')) ridePool.push('Uber Share 👥');
-          if (enabledServices.includes('intercity')) ridePool.push('Uber Intercity');
-          if (enabledServices.includes('hyper_pet')) ridePool.push('Uber Pet 🐾');
-          if (enabledServices.includes('hyperxl')) ridePool.push('UberXL 🚙');
-          if (enabledServices.includes('green')) ridePool.push('Uber Green 🔋');
-          if (enabledServices.includes('assist')) ridePool.push('Uber Assist ♿');
-          
-          if (ridePool.length > 0) {
-            variant = ridePool[Math.floor(Math.random() * ridePool.length)];
+          // If strictly rolled 1 in 15, assign Intercity; otherwise pick from regular city rides
+          if (isIntercityRoll && candIndex === 0) {
+            variant = 'Uber Intercity';
           } else {
-            variant = 'Uber Share 👥';
+            const ridePool: string[] = [];
+            if (enabledServices.includes('rideshare')) ridePool.push('Uber Share 👥');
+            if (enabledServices.includes('hyper_pet')) ridePool.push('Uber Pet 🐾');
+            if (enabledServices.includes('hyperxl')) ridePool.push('UberXL 🚙');
+            if (enabledServices.includes('green')) ridePool.push('Uber Green 🔋');
+            if (enabledServices.includes('assist')) ridePool.push('Uber Assist ♿');
+            
+            if (ridePool.length > 0) {
+              variant = ridePool[Math.floor(Math.random() * ridePool.length)];
+            } else {
+              variant = 'UberX 🚗';
+            }
           }
         } else {
           const delivPool: string[] = ['Uber Eats 🍔'];
@@ -11238,18 +11257,21 @@ export default function App() {
         }
       } else {
         if (type === 'ride') {
-          const ridePool: string[] = [];
-          if (enabledServices.includes('rideshare')) ridePool.push('Hyper Share 👥');
-          if (enabledServices.includes('intercity')) ridePool.push('Hyper Intercity 🚀');
-          if (enabledServices.includes('hyper_pet')) ridePool.push('Hyper Pet 🐾');
-          if (enabledServices.includes('hyperxl')) ridePool.push('Hyper XL 🚙');
-          if (enabledServices.includes('green')) ridePool.push('Hyper Eco 🔋');
-          if (enabledServices.includes('assist')) ridePool.push('Hyper Assist ♿');
-          
-          if (ridePool.length > 0) {
-            variant = ridePool[Math.floor(Math.random() * ridePool.length)];
+          if (isIntercityRoll && candIndex === 0) {
+            variant = 'Hyper Intercity 🚀';
           } else {
-            variant = 'Hyper Share 👥';
+            const ridePool: string[] = [];
+            if (enabledServices.includes('rideshare')) ridePool.push('Hyper Share 👥');
+            if (enabledServices.includes('hyper_pet')) ridePool.push('Hyper Pet 🐾');
+            if (enabledServices.includes('hyperxl')) ridePool.push('Hyper XL 🚙');
+            if (enabledServices.includes('green')) ridePool.push('Hyper Eco 🔋');
+            if (enabledServices.includes('assist')) ridePool.push('Hyper Assist ♿');
+            
+            if (ridePool.length > 0) {
+              variant = ridePool[Math.floor(Math.random() * ridePool.length)];
+            } else {
+              variant = 'Hyper Ride ⚡';
+            }
           }
         } else {
           const delivPool: string[] = ['Hyper Eats 🍔'];
