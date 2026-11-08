@@ -124,6 +124,7 @@ import { MultiplayerHub, OtherDriver } from './components/MultiplayerHub';
 import { CommandCentreScreen } from './components/CommandCentreScreen';
 import { OfflineHomeScreen } from './components/OfflineHomeScreen';
 import { CarPlaySystem } from './components/CarPlaySystem';
+import { DynamicIslandAndVoice } from './components/DynamicIslandAndVoice';
 import { AddressSearchModal } from './components/AddressSearchModal';
 import { AcceptanceRateHeatmapOverlay, getAcceptanceZonesForCity, AcceptanceZone } from './components/AcceptanceRateHeatmapOverlay';
 import { UberPwaInstallPrompt } from './components/UberPwaInstallPrompt';
@@ -7044,8 +7045,8 @@ export default function App() {
         type: "HyperX"
       },
       documentExpiries: {
-        "Driving Licence": "2027-05-01",
-        "Vehicle Insurance": "2026-05-19",
+        "Driving Licence": "2027-11-01",
+        "Vehicle Insurance": "2027-11-15",
         "Bank Statement": "Verified"
       }
     };
@@ -7053,6 +7054,15 @@ export default function App() {
       const saved = localStorage.getItem('hyper_driver_eats_user');
       if (saved) {
         const parsed = JSON.parse(saved);
+        // Ensure documentExpiries is updated and valid
+        if (!parsed.documentExpiries || parsed.documentExpiries["Vehicle Insurance"] === "2026-05-19" || (new Date(parsed.documentExpiries["Vehicle Insurance"]).getTime() < Date.now())) {
+          parsed.documentExpiries = {
+            ...parsed.documentExpiries,
+            "Driving Licence": "2027-11-01",
+            "Vehicle Insurance": "2027-11-15",
+            "Bank Statement": "Verified"
+          };
+        }
         // Ensure earningsStats is realistic if it was initialized to zeros or is missing
         if (!parsed.earningsStats || parsed.earningsStats.weekly === 0) {
           parsed.earningsStats = {
@@ -15414,6 +15424,16 @@ export default function App() {
                         <Navigation size={14} className="fill-white" />
                         <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider hidden sm:inline">{navigationApp === 'google' ? 'OSM' : navigationApp === 'waze' ? 'Waze' : navigationApp === 'apple' ? 'Apple' : '3D'}</span>
                       </button>
+
+                      {/* Phone Version Dynamic Island Mic & PiP Controls */}
+                      <DynamicIslandAndVoice
+                        isOnline={user.isOnline}
+                        pendingOrder={pendingOrder}
+                        onAcceptOrder={handleAcceptOrder}
+                        onDeclineOrder={handleDeclineOrder}
+                        todayEarningsTotal={earnings}
+                        onToggleOnline={handleGoOnline}
+                      />
 
                       <button 
                         onClick={() => setCurrentScreen('carplay_dashboard')}

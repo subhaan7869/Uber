@@ -92,34 +92,46 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
       return;
     }
 
-    // Start Audio Stream (Microphone) to engage iOS Dynamic Island pill [🎙️ | H]
     const initMicSession = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
+        // If stream is already active and live, reuse it rather than calling getUserMedia again
+        let stream = mediaStreamRef.current;
+        if (!stream || !stream.active || stream.getAudioTracks().length === 0 || stream.getAudioTracks()[0].readyState === 'ended') {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+          mediaStreamRef.current = stream;
+        }
 
         if (isCancelled) {
           stream.getTracks().forEach(t => t.stop());
           return;
         }
 
-        mediaStreamRef.current = stream;
-
-        // Web Audio analyser for level metering without audible feedback
+        // Web Audio analyser for level metering + silent keep-alive to hold iOS Dynamic Island session
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtx) {
           const audioCtx = new AudioCtx();
           audioContextRef.current = audioCtx;
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume().catch(() => {});
+          }
           const source = audioCtx.createMediaStreamSource(stream);
           const analyser = audioCtx.createAnalyser();
           analyser.fftSize = 64;
           source.connect(analyser);
           analyserRef.current = analyser;
+
+          // Silent keep-alive node connected to destination:
+          // Critical for iOS WebKit to avoid tearing down mic hardware pipeline when backgrounded
+          const silentGain = audioCtx.createGain();
+          silentGain.gain.value = 0.00001; // Inaudible
+          source.connect(silentGain);
+          silentGain.connect(audioCtx.destination);
 
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           const updateLevel = () => {
@@ -173,22 +185,28 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
             }
           };
 
-          recognition.onerror = () => {
-            // Non-fatal, speech recognition will auto-restart if continuous
+          recognition.onerror = (e: any) => {
+            // Non-fatal. When page is hidden on iOS, speech recognition pauses
+            if (e.error === 'not-allowed' && document.visibilityState === 'hidden') {
+              return;
+            }
           };
 
           recognition.onend = () => {
-            // Restart if mic active
-            if (mediaStreamRef.current && isMicActive) {
+            // Only restart if page is VISIBLE!
+            // Crucial: Calling recognition.start() while hidden in iOS Safari triggers permission re-request!
+            if (mediaStreamRef.current && isMicActive && document.visibilityState === 'visible') {
               try { recognition.start(); } catch (e) {}
             }
           };
 
-          try {
-            recognition.start();
-            recognitionRef.current = recognition;
-          } catch (e) {
-            console.warn('SpeechRecognition failed to start automatically:', e);
+          if (document.visibilityState === 'visible') {
+            try {
+              recognition.start();
+              recognitionRef.current = recognition;
+            } catch (e) {
+              console.warn('SpeechRecognition failed to start automatically:', e);
+            }
           }
         } else {
           setSpeechSupported(false);
@@ -202,8 +220,23 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
 
     initMicSession();
 
+    // Listen for visibility change so we don't throw errors when app is backgrounded
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMicActive) {
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().catch(() => {});
+        }
+        if (recognitionRef.current) {
+          try { recognitionRef.current.start(); } catch (e) {}
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       isCancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());

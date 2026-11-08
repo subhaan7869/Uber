@@ -17,9 +17,14 @@ import {
   ChevronUp,
   List,
   ShieldAlert,
-  Target
+  Target,
+  X,
+  Mic,
+  Sparkles,
+  HelpCircle
 } from 'lucide-react';
 import { UserProfile, DestinationFilter } from '../types';
+import { DynamicIslandAndVoice } from './DynamicIslandAndVoice';
 
 interface OfflineHomeScreenProps {
   user: UserProfile;
@@ -59,6 +64,7 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
   onClearDestinationFilter
 }) => {
   const [selectedOpportunityTab, setSelectedOpportunityTab] = useState<'all' | 'promos' | 'quests' | 'streaks' | 'airports'>('all');
+  const [isInsuranceDismissed, setIsInsuranceDismissed] = useState(false);
 
   const insuranceExpiry = user.documentExpiries?.["Vehicle Insurance"];
   const insuranceDaysLeft = React.useMemo(() => {
@@ -71,53 +77,74 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
 
   return (
     <div className="relative w-full h-full bg-white text-neutral-900 flex flex-col overflow-hidden select-none font-sans">
-      {/* Top Header Navigation Overlay */}
-      <div className="shrink-0 pt-10 px-5 pb-3 flex justify-between items-center bg-white border-b border-gray-100 z-20">
+      {/* Top Header Navigation with Safe-Area Inset for iPhone Dynamic Island */}
+      <div 
+        className="shrink-0 px-5 pb-3.5 flex justify-between items-center bg-white border-b border-gray-150 z-20 shadow-xs"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 58px)' }}
+      >
         <button 
           onClick={onOpenSafetyToolkit}
-          className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-blue-600 transition-colors active:scale-95"
+          className="w-11 h-11 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-blue-600 transition-colors active:scale-95 cursor-pointer shadow-xs"
           title="Safety Toolkit"
         >
-          <Shield size={20} className="fill-blue-600/10" />
+          <Shield size={22} className="fill-blue-600/10 text-blue-600" />
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Dynamic Island Mic Keep-Alive & Float HUD (Phone Version) */}
+          <DynamicIslandAndVoice
+            isOnline={user?.isOnline ?? false}
+            pendingOrder={null}
+            todayEarningsTotal={user.earningsStats?.daily || 0}
+            onToggleOnline={onGoOnline}
+          />
+
           {onOpenLayers && (
             <button 
               onClick={onOpenLayers}
-              className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-gray-700 transition-colors active:scale-95"
+              className="w-11 h-11 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-gray-700 transition-colors active:scale-95 cursor-pointer shadow-xs"
               title="Map Layers"
             >
-              <Layers size={18} />
+              <Layers size={20} />
             </button>
           )}
           <button 
             onClick={onOpenSearch}
-            className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-gray-700 transition-colors active:scale-95"
+            className="w-11 h-11 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 flex items-center justify-center text-gray-700 transition-colors active:scale-95 cursor-pointer shadow-xs"
             title="Search Destination"
           >
-            <Search size={18} />
+            <Search size={20} />
           </button>
         </div>
       </div>
 
       {/* Main Scrollable Offline Home Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pt-4 pb-6 space-y-6">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pt-4 pb-8 space-y-6">
         
-        {insuranceDaysLeft !== null && insuranceDaysLeft <= 30 && (
-          <div className="bg-orange-50 border border-orange-200 p-4 rounded-3xl flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
-              <ShieldAlert size={20} />
+        {/* Only show warning if valid positive days left (within 30 days) and not dismissed */}
+        {insuranceDaysLeft !== null && insuranceDaysLeft > 0 && insuranceDaysLeft <= 30 && !isInsuranceDismissed && (
+          <div className="bg-orange-50 border border-orange-200 p-4 rounded-3xl flex items-start justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                <ShieldAlert size={20} />
+              </div>
+              <div>
+                <h3 className="font-black text-orange-900 text-sm">Action Required</h3>
+                <p className="text-xs text-orange-700 font-bold mt-0.5">
+                  Your vehicle insurance expires in {insuranceDaysLeft} days ({insuranceExpiry}).
+                </p>
+                <p className="text-[10px] text-orange-600 mt-1">
+                  Please update your documents in Settings to stay online.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-black text-orange-900 text-sm">Action Required</h3>
-              <p className="text-xs text-orange-700 font-bold mt-0.5">
-                Your vehicle insurance expires in {insuranceDaysLeft} days ({insuranceExpiry}).
-              </p>
-              <p className="text-[10px] text-orange-600 mt-1">
-                Please update your documents in Settings to stay online.
-              </p>
-            </div>
+            <button
+              onClick={() => setIsInsuranceDismissed(true)}
+              className="p-1 rounded-full text-orange-400 hover:text-orange-700 hover:bg-orange-100 transition-colors cursor-pointer"
+              title="Dismiss notice"
+            >
+              <X size={16} />
+            </button>
           </div>
         )}
 
@@ -142,6 +169,38 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
           <p className="text-xs text-gray-400 mt-1 font-medium leading-relaxed">
             {user.isOnline ? "You are currently receiving trip requests. Tap below to view the live map." : "When offline, you won't receive trip requests. Configure preferences or tap below to go online."}
           </p>
+        </div>
+
+        {/* Dynamic Island Mic & Hands-Free Mode (Phone Version Card) */}
+        <div className="bg-gradient-to-br from-[#0c0f17] to-black text-white p-5 rounded-3xl border border-white/10 shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="flex items-start justify-between relative z-10 gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Mic size={22} className="animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-white text-sm uppercase tracking-wider">Dynamic Island & Voice</h3>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-black uppercase">Phone Mode</span>
+                </div>
+                <p className="text-[11px] text-gray-300 font-medium mt-0.5 leading-snug">
+                  Pins mic to island • Spotify & Music safe • Voice dispatch "Accept"
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3.5 pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-gray-300">
+            <div className="flex items-center gap-2 text-amber-300/90 font-medium">
+              <Sparkles size={13} className="text-amber-400 shrink-0" />
+              <span>Tap <strong>🎙️ Island Mic</strong> in the header bar above to engage.</span>
+            </div>
+            <div className="text-[10px] text-gray-400">
+              iPhone: <em>Settings ➔ Safari (or Hyper Driver) ➔ Mic ➔ "Allow"</em>
+            </div>
+          </div>
         </div>
 
         {/* Real Address Search Bar / Destination Mode Pill */}
