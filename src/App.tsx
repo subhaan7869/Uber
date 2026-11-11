@@ -5714,9 +5714,9 @@ const TripHistoryScreen = ({
               { id: 'all', label: 'All Trips' },
               { id: 'ride', label: 'Rides' },
               { id: 'delivery', label: 'Deliveries' }
-            ].map(f => (
+            ].map((f, fIdx) => (
               <button
-                key={f.id}
+                key={`trip-filter-${f.id}-${fIdx}`}
                 onClick={() => setFilterType(f.id as any)}
                 className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${filterType === f.id ? 'bg-[#22c55e] text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
               >
@@ -6386,9 +6386,9 @@ const DeliveryVerificationModal = ({
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 max-w-[240px] mx-auto mb-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(val => (
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((val, vIdx) => (
                 <button 
-                  key={val}
+                  key={`pin-pad-${val}-${vIdx}`}
                   onClick={() => {
                     if (enteredPin.length < 4) {
                       setEnteredPin(enteredPin + val);
@@ -7482,7 +7482,8 @@ export default function App() {
   // Load custom sound from IndexedDB on startup
   React.useEffect(() => {
     try {
-      const request = indexedDB.open("hyper_driver_audio_db", 1);
+      if (typeof indexedDB === 'undefined') return;
+      const request = indexedDB.open("hyper_driver_alert_sound_db", 1);
       request.onupgradeneeded = (e: any) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains("audio_store")) {
@@ -7490,32 +7491,39 @@ export default function App() {
         }
       };
       request.onsuccess = (e: any) => {
-        const db = e.target.result;
-        const transaction = db.transaction("audio_store", "readonly");
-        const store = transaction.objectStore("audio_store");
-        const getFile = store.get("custom_alert");
-        getFile.onsuccess = () => {
-          if (getFile.result) {
-            const name = getFile.result.name;
-            let url = "";
-            if (getFile.result.dataUrl) {
-              url = getFile.result.dataUrl;
-            } else if (getFile.result.blob) {
-              url = URL.createObjectURL(getFile.result.blob);
-            }
-            
-            if (url) {
-              setCustomSoundUrl(url);
-              setCustomSoundName(name);
-              // Only force custom file option if previous preference was custom_file
-              const savedPref = localStorage.getItem('hyper_driver_sound_pref');
-              if (savedPref === 'custom_file') {
-                setSoundPreference('custom_file');
-              }
-              addDebugLog('success', `Loaded custom sound file: ${name}`);
-            }
+        try {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains("audio_store")) {
+            return;
           }
-        };
+          const transaction = db.transaction("audio_store", "readonly");
+          const store = transaction.objectStore("audio_store");
+          const getFile = store.get("custom_alert");
+          getFile.onsuccess = () => {
+            if (getFile.result) {
+              const name = getFile.result.name;
+              let url = "";
+              if (getFile.result.dataUrl) {
+                url = getFile.result.dataUrl;
+              } else if (getFile.result.blob) {
+                url = URL.createObjectURL(getFile.result.blob);
+              }
+              
+              if (url) {
+                setCustomSoundUrl(url);
+                setCustomSoundName(name);
+                // Only force custom file option if previous preference was custom_file
+                const savedPref = localStorage.getItem('hyper_driver_sound_pref');
+                if (savedPref === 'custom_file') {
+                  setSoundPreference('custom_file');
+                }
+                addDebugLog('success', `Loaded custom sound file: ${name}`);
+              }
+            }
+          };
+        } catch (txErr) {
+          console.warn("IndexedDB alert store read skipped:", txErr);
+        }
       };
     } catch (e) {
       console.warn("IndexedDB not supported or blocked", e);
@@ -7548,20 +7556,29 @@ export default function App() {
         setCustomSoundName(file.name);
         setSoundPreference('custom_file');
 
-        const request = indexedDB.open("hyper_driver_audio_db", 1);
-        request.onupgradeneeded = (e: any) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains("audio_store")) {
-            db.createObjectStore("audio_store");
-          }
-        };
-        request.onsuccess = (e: any) => {
-          const db = e.target.result;
-          const transaction = db.transaction("audio_store", "readwrite");
-          const store = transaction.objectStore("audio_store");
-          store.put({ dataUrl: dataUrl, name: file.name }, "custom_alert");
-          addDebugLog('success', `Saved custom alert sound in IndexedDB: ${file.name}`);
-        };
+        try {
+          const request = indexedDB.open("hyper_driver_alert_sound_db", 1);
+          request.onupgradeneeded = (e: any) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains("audio_store")) {
+              db.createObjectStore("audio_store");
+            }
+          };
+          request.onsuccess = (e: any) => {
+            try {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains("audio_store")) return;
+              const transaction = db.transaction("audio_store", "readwrite");
+              const store = transaction.objectStore("audio_store");
+              store.put({ dataUrl: dataUrl, name: file.name }, "custom_alert");
+              addDebugLog('success', `Saved custom alert sound in IndexedDB: ${file.name}`);
+            } catch (txErr) {
+              console.warn("Could not save alert sound to IndexedDB:", txErr);
+            }
+          };
+        } catch (idbErr) {
+          console.warn("IndexedDB write failed:", idbErr);
+        }
       };
       reader.readAsDataURL(file);
 
@@ -7579,13 +7596,24 @@ export default function App() {
       setSoundPreference('synthesized');
     }
     try {
-      const request = indexedDB.open("hyper_driver_audio_db", 1);
-      request.onsuccess = (e: any) => {
+      const request = indexedDB.open("hyper_driver_alert_sound_db", 1);
+      request.onupgradeneeded = (e: any) => {
         const db = e.target.result;
-        const transaction = db.transaction("audio_store", "readwrite");
-        const store = transaction.objectStore("audio_store");
-        store.delete("custom_alert");
-        addDebugLog('info', "Removed custom sound file.");
+        if (!db.objectStoreNames.contains("audio_store")) {
+          db.createObjectStore("audio_store");
+        }
+      };
+      request.onsuccess = (e: any) => {
+        try {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains("audio_store")) return;
+          const transaction = db.transaction("audio_store", "readwrite");
+          const store = transaction.objectStore("audio_store");
+          store.delete("custom_alert");
+          addDebugLog('info', "Removed custom sound file.");
+        } catch (txErr) {
+          console.warn("Could not delete from IndexedDB:", txErr);
+        }
       };
     } catch (e) {}
   };
@@ -15680,7 +15708,7 @@ export default function App() {
                                   );
                                 })() : (
                                   <motion.span
-                                    key={onlineStatusLoopText + '_sub'}
+                                    key={`online-sub-text-${onlineStatusLoopText}`}
                                     initial={{ opacity: 0, y: 5 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -5 }}
@@ -15933,8 +15961,8 @@ export default function App() {
                                       onChange={(e) => handleSelectCity(e.target.value)}
                                       className="text-[10px] bg-white/5 border border-white/10 hover:border-white/20 text-blue-400 font-extrabold px-1.5 py-0.5 rounded cursor-pointer outline-none transition-colors"
                                     >
-                                      {Object.keys(CITY_DATABASES).map(cName => (
-                                        <option key={cName} value={cName} className="bg-slate-900 text-white font-bold">{cName}</option>
+                                      {Object.keys(CITY_DATABASES).map((cName, cIdx) => (
+                                        <option key={`city-opt-${cName}-${cIdx}`} value={cName} className="bg-slate-900 text-white font-bold">{cName}</option>
                                       ))}
                                     </select>
                                   </div>
@@ -15956,8 +15984,8 @@ export default function App() {
                                         defaultValue=""
                                       >
                                         <option value="" disabled className="bg-slate-900 text-gray-405">Jump to POI...</option>
-                                        {Object.keys(NOTTINGHAM_LANDMARKS).map(name => (
-                                          <option key={name} value={name} className="bg-slate-900 text-white font-bold">{name}</option>
+                                        {Object.keys(NOTTINGHAM_LANDMARKS).map((name, nIdx) => (
+                                          <option key={`landmark-opt-${name}-${nIdx}`} value={name} className="bg-slate-900 text-white font-bold">{name}</option>
                                         ))}
                                       </select>
                                     </div>
@@ -16383,9 +16411,9 @@ export default function App() {
                       <p className="text-center text-gray-400 font-bold mb-6">Select a reason for cancelling this trip.</p>
                       
                       <div className="space-y-2 mb-8 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                        {['Customer unavailable', 'Restaurant delay', 'Vehicle trouble', 'Safety concern', 'Other'].map(reason => (
+                        {['Customer unavailable', 'Restaurant delay', 'Vehicle trouble', 'Safety concern', 'Other'].map((reason, rIdx) => (
                           <button
-                            key={reason}
+                            key={`cancel-reason-${reason}-${rIdx}`}
                             onClick={() => setSelectedCancelReason(reason)}
                             className={`w-full p-3 rounded-xl text-left font-bold transition-all ${
                               selectedCancelReason === reason 
@@ -18330,9 +18358,9 @@ export default function App() {
 
               {/* Tabs */}
               <div className="flex p-1 rounded-2xl mb-8 bg-white/5 border border-white/5">
-                {(['today', 'weekly', 'recent'] as const).map((tab) => (
+                {(['today', 'weekly', 'recent'] as const).map((tab, tIdx) => (
                   <button
-                    key={tab}
+                    key={`earnings-tab-${tab}-${tIdx}`}
                     onClick={() => setEarningsTab(tab)}
                     className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
                       earningsTab === tab 

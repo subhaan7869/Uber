@@ -351,7 +351,7 @@ export const EarningsDetail = ({
         <div className="flex p-1 rounded-2xl bg-white/5 border border-white/5">
           {pages.map((p, i) => (
             <button 
-              key={p}
+              key={`earnings-stat-tab-${p}-${i}`}
               onClick={() => setPage(i)}
               className={`flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${page === i ? 'bg-[#22c55e] text-black shadow-lg shadow-[#22c55e]/20' : 'text-gray-400 hover:text-white'}`}
             >
@@ -364,7 +364,7 @@ export const EarningsDetail = ({
       <div className="flex-1 overflow-y-auto no-scrollbar pb-32 bg-[#0a0a0c]">
         <AnimatePresence mode="wait">
           <motion.div 
-            key={page}
+            key={`earnings-page-view-${page}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}

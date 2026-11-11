@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { 
   Mic, 
   MicOff, 
@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Order } from '../types';
+import { dynamicIslandVoiceManager } from '../utils/dynamicIslandVoiceManager';
 
 interface DynamicIslandAndVoiceProps {
   isOnline: boolean;
@@ -35,28 +36,20 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
   todayEarningsTotal = 0,
   onToggleOnline
 }) => {
-  // Mic & Dynamic Island keep-alive state
-  const [isMicActive, setIsMicActive] = useState<boolean>(() => {
-    return localStorage.getItem('hyper_dynamic_island_mic') === 'true';
-  });
-  const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
-  const [lastHeardCommand, setLastHeardCommand] = useState<string | null>(null);
-  const [speechSupported, setSpeechSupported] = useState<boolean>(true);
+  // Subscribe to singleton Mic & Dynamic Island audio manager with stable bound methods
+  const voiceState = useSyncExternalStore(
+    dynamicIslandVoiceManager.subscribe,
+    dynamicIslandVoiceManager.getState
+  );
+
+  const { isMicActive, micAudioLevel, lastHeardCommand, speechSupported, isPipActive } = voiceState;
 
   // Picture-in-Picture floating HUD state
   const [isPipAvailable, setIsPipAvailable] = useState<boolean>(false);
-  const [isPipActive, setIsPipActive] = useState<boolean>(false);
 
   // Guide Modal state
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [activeGuideTab, setActiveGuideTab] = useState<'island' | 'ipad' | 'iphone_classic' | 'android'>('island');
-
-  // Audio & Speech recognition refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const recognitionRef = useRef<any>(null);
 
   // Canvas & Video refs for Picture-in-Picture
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -69,195 +62,20 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
     }
   }, []);
 
-  // Voice Command Dispatch & Dynamic Island Mic Session
+  // Sync latest command handlers to the singleton manager without resetting audio streams
   useEffect(() => {
-    let isCancelled = false;
+    dynamicIslandVoiceManager.registerHandlers({
+      onAcceptOrder,
+      onDeclineOrder,
+      onToggleOnline,
+      isOnline
+    });
+  }, [onAcceptOrder, onDeclineOrder, onToggleOnline, isOnline]);
 
-    if (!isMicActive) {
-      // Clean up audio stream & recognition
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
-        recognitionRef.current = null;
-      }
-      setMicAudioLevel(0);
-      return;
-    }
-
-    const initMicSession = async () => {
-      try {
-        // If stream is already active and live, reuse it rather than calling getUserMedia again
-        let stream = mediaStreamRef.current;
-        if (!stream || !stream.active || stream.getAudioTracks().length === 0 || stream.getAudioTracks()[0].readyState === 'ended') {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
-            }
-          });
-          mediaStreamRef.current = stream;
-        }
-
-        if (isCancelled) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
-        }
-
-        // Web Audio analyser for level metering + silent keep-alive to hold iOS Dynamic Island session
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtx) {
-          const audioCtx = new AudioCtx();
-          audioContextRef.current = audioCtx;
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume().catch(() => {});
-          }
-          const source = audioCtx.createMediaStreamSource(stream);
-          const analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 64;
-          source.connect(analyser);
-          analyserRef.current = analyser;
-
-          // Silent keep-alive node connected to destination:
-          // Critical for iOS WebKit to avoid tearing down mic hardware pipeline when backgrounded
-          const silentGain = audioCtx.createGain();
-          silentGain.gain.value = 0.00001; // Inaudible
-          source.connect(silentGain);
-          silentGain.connect(audioCtx.destination);
-
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
-          const updateLevel = () => {
-            if (!analyserRef.current) return;
-            analyserRef.current.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i];
-            }
-            const avg = sum / dataArray.length;
-            setMicAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
-            animFrameRef.current = requestAnimationFrame(updateLevel);
-          };
-          updateLevel();
-        }
-
-        // Initialize Speech Recognition for Hands-Free Dispatch
-        const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRec) {
-          const recognition = new SpeechRec();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-
-          recognition.onresult = (event: any) => {
-            const last = event.results.length - 1;
-            const transcript = event.results[last][0].transcript.toLowerCase().trim();
-            setLastHeardCommand(transcript);
-
-            // Command recognition:
-            if (transcript.includes('accept') || transcript.includes('take it') || transcript.includes('yes')) {
-              if (onAcceptOrder) {
-                onAcceptOrder();
-                setLastHeardCommand('✅ Accepted Order');
-              }
-            } else if (transcript.includes('decline') || transcript.includes('pass') || transcript.includes('reject') || transcript.includes('no')) {
-              if (onDeclineOrder) {
-                onDeclineOrder();
-                setLastHeardCommand('❌ Declined Order');
-              }
-            } else if (transcript.includes('go online') || transcript.includes('online')) {
-              if (onToggleOnline && !isOnline) {
-                onToggleOnline();
-                setLastHeardCommand('⚡ Went Online');
-              }
-            } else if (transcript.includes('go offline') || transcript.includes('offline')) {
-              if (onToggleOnline && isOnline) {
-                onToggleOnline();
-                setLastHeardCommand('💤 Went Offline');
-              }
-            }
-          };
-
-          recognition.onerror = (e: any) => {
-            // Non-fatal. When page is hidden on iOS, speech recognition pauses
-            if (e.error === 'not-allowed' && document.visibilityState === 'hidden') {
-              return;
-            }
-          };
-
-          recognition.onend = () => {
-            // Only restart if page is VISIBLE!
-            // Crucial: Calling recognition.start() while hidden in iOS Safari triggers permission re-request!
-            if (mediaStreamRef.current && isMicActive && document.visibilityState === 'visible') {
-              try { recognition.start(); } catch (e) {}
-            }
-          };
-
-          if (document.visibilityState === 'visible') {
-            try {
-              recognition.start();
-              recognitionRef.current = recognition;
-            } catch (e) {
-              console.warn('SpeechRecognition failed to start automatically:', e);
-            }
-          }
-        } else {
-          setSpeechSupported(false);
-        }
-      } catch (err) {
-        console.warn('Microphone access for Dynamic Island / Voice was denied or unavailable:', err);
-        setIsMicActive(false);
-        localStorage.setItem('hyper_dynamic_island_mic', 'false');
-      }
-    };
-
-    initMicSession();
-
-    // Listen for visibility change so we don't throw errors when app is backgrounded
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && isMicActive) {
-        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-          audioContextRef.current.resume().catch(() => {});
-        }
-        if (recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch (e) {}
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      isCancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
-        recognitionRef.current = null;
-      }
-    };
-  }, [isMicActive, onAcceptOrder, onDeclineOrder, onToggleOnline, isOnline]);
-
-  const toggleMicSession = () => {
-    const nextState = !isMicActive;
-    setIsMicActive(nextState);
-    localStorage.setItem('hyper_dynamic_island_mic', String(nextState));
+  const toggleMicSession = async () => {
+    await dynamicIslandVoiceManager.toggleMic();
   };
+
 
   // Picture-in-Picture Floating Canvas Renderer
   useEffect(() => {
@@ -384,15 +202,17 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
-        setIsPipActive(false);
+        dynamicIslandVoiceManager.setPipActive(false);
       } else {
         if (!video.srcObject) {
-          const stream = canvas.captureStream(30);
-          video.srcObject = stream;
-          await video.play();
+          const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
+          if (stream) {
+            video.srcObject = stream;
+            await video.play().catch(() => {});
+          }
         }
         await video.requestPictureInPicture();
-        setIsPipActive(true);
+        dynamicIslandVoiceManager.setPipActive(true);
       }
     } catch (err) {
       console.warn('PiP error:', err);
@@ -404,8 +224,8 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
     const video = videoRef.current;
     if (!video) return;
 
-    const onEnter = () => setIsPipActive(true);
-    const onLeave = () => setIsPipActive(false);
+    const onEnter = () => dynamicIslandVoiceManager.setPipActive(true);
+    const onLeave = () => dynamicIslandVoiceManager.setPipActive(false);
 
     video.addEventListener('enterpictureinpicture', onEnter);
     video.addEventListener('leavepictureinpicture', onLeave);
@@ -497,7 +317,7 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
           <Mic size={12} className="text-amber-400 animate-pulse" />
           <span>Heard: "{lastHeardCommand}"</span>
           <button 
-            onClick={() => setLastHeardCommand(null)}
+            onClick={() => dynamicIslandVoiceManager.clearLastCommand()}
             className="text-gray-400 hover:text-white text-xs ml-1"
           >
             ×
