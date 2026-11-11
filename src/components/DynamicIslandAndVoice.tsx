@@ -22,19 +22,23 @@ import { dynamicIslandVoiceManager } from '../utils/dynamicIslandVoiceManager';
 interface DynamicIslandAndVoiceProps {
   isOnline: boolean;
   pendingOrder?: Order | null;
+  activeOrder?: Order | null;
   onAcceptOrder?: () => void;
   onDeclineOrder?: () => void;
   todayEarningsTotal?: number;
   onToggleOnline?: () => void;
+  onNextWorkflowStep?: () => void;
 }
 
 export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
   isOnline,
   pendingOrder,
+  activeOrder,
   onAcceptOrder,
   onDeclineOrder,
   todayEarningsTotal = 0,
-  onToggleOnline
+  onToggleOnline,
+  onNextWorkflowStep
 }) => {
   // Subscribe to singleton Mic & Dynamic Island audio manager with stable bound methods
   const voiceState = useSyncExternalStore(
@@ -42,7 +46,16 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
     dynamicIslandVoiceManager.getState
   );
 
-  const { isMicActive, micAudioLevel, lastHeardCommand, speechSupported, isPipActive } = voiceState;
+  const { 
+    isMicActive, 
+    isListening,
+    micAudioLevel, 
+    lastHeardCommand, 
+    liveTranscript,
+    speechSupported, 
+    isPipActive,
+    permissionError 
+  } = voiceState;
 
   // Picture-in-Picture floating HUD state
   const [isPipAvailable, setIsPipAvailable] = useState<boolean>(false);
@@ -68,9 +81,10 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
       onAcceptOrder,
       onDeclineOrder,
       onToggleOnline,
+      onNextWorkflowStep,
       isOnline
     });
-  }, [onAcceptOrder, onDeclineOrder, onToggleOnline, isOnline]);
+  }, [onAcceptOrder, onDeclineOrder, onToggleOnline, onNextWorkflowStep, isOnline]);
 
   const toggleMicSession = async () => {
     await dynamicIslandVoiceManager.toggleMic();
@@ -257,30 +271,38 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
         {/* Dynamic Island Mic Keep-Alive & Voice Dispatch Button */}
         <button
           onClick={toggleMicSession}
-          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm ${
+          className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer active:scale-95 shadow-sm ${
             isMicActive
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-amber-500/20'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/60 shadow-emerald-500/20'
               : 'bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10'
           }`}
-          title="Dynamic Island Mic & Voice Mode (Spotify/Apple Music safe)"
+          title={isMicActive ? "Microphone Listening - Tap to Turn Off" : "Turn On Microphone for Voice Commands"}
         >
           {isMicActive ? (
             <>
-              <div className="relative flex items-center justify-center">
-                <Mic size={11} className="text-amber-400 animate-pulse" />
-                <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping" />
+              {/* Dynamic Soundwave Level Visualizer */}
+              <div className="flex items-end gap-0.5 h-3.5 w-3.5 pb-0.5">
+                <span 
+                  className="w-1 bg-emerald-400 rounded-full transition-all duration-75" 
+                  style={{ height: `${Math.max(25, Math.min(100, micAudioLevel * 1.5))}%` }} 
+                />
+                <span 
+                  className="w-1 bg-emerald-400 rounded-full transition-all duration-75" 
+                  style={{ height: `${Math.max(40, Math.min(100, micAudioLevel * 2.2))}%` }} 
+                />
+                <span 
+                  className="w-1 bg-emerald-400 rounded-full transition-all duration-75" 
+                  style={{ height: `${Math.max(25, Math.min(100, micAudioLevel * 1.2))}%` }} 
+                />
               </div>
-              <span>🎙️ Island Mic ON</span>
-              {micAudioLevel > 15 && (
-                <span className="text-[9px] bg-amber-400/20 px-1 rounded text-amber-200">
-                  {micAudioLevel}%
-                </span>
-              )}
+              <span className="font-mono text-emerald-200">
+                {isListening ? '🎙️ LISTENING' : '🎙️ MIC ON'}
+              </span>
             </>
           ) : (
             <>
-              <MicOff size={11} className="text-gray-400" />
-              <span>🎙️ Island Mic</span>
+              <MicOff size={12} className="text-gray-400" />
+              <span>🎙️ MIC OFF</span>
             </>
           )}
         </button>
@@ -289,36 +311,73 @@ export const DynamicIslandAndVoice: React.FC<DynamicIslandAndVoiceProps> = ({
         {isPipAvailable && (
           <button
             onClick={handleTogglePip}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm ${
+            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm ${
               isPipActive
                 ? 'bg-blue-600 text-white border border-blue-400 shadow-blue-500/30'
                 : 'bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10'
             }`}
             title="Float HUD Widget (PiP for iPad, Android & Non-Island iPhone)"
           >
-            <PictureInPicture size={11} className={isPipActive ? 'text-white' : 'text-blue-400'} />
-            <span>{isPipActive ? '🪟 HUD Active' : '🪟 Float HUD'}</span>
+            <PictureInPicture size={12} className={isPipActive ? 'text-white' : 'text-blue-400'} />
+            <span>{isPipActive ? 'HUD Active' : 'Float HUD'}</span>
           </button>
         )}
 
         {/* Multi-Device & Setup Info Button */}
         <button
           onClick={() => setShowGuideModal(true)}
-          className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 cursor-pointer transition-all"
-          title="iPad, Android & Dynamic Island Setup Guide"
+          className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 cursor-pointer transition-all"
+          title="Microphone & Multi-Device Setup Guide"
         >
-          <HelpCircle size={13} className="text-blue-400" />
+          <HelpCircle size={14} className="text-blue-400" />
         </button>
       </div>
 
-      {/* Voice feedback toast when command is recognized */}
-      {lastHeardCommand && isMicActive && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-black/90 border border-amber-500/60 rounded-full text-amber-300 text-xs font-mono flex items-center gap-2 shadow-2xl backdrop-blur-md animate-fade-in">
-          <Mic size={12} className="text-amber-400 animate-pulse" />
-          <span>Heard: "{lastHeardCommand}"</span>
+      {/* Permission Error Banner */}
+      {permissionError && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[6000] w-[92%] max-w-md p-4 bg-red-950/95 border-2 border-red-500 rounded-2xl shadow-2xl text-white backdrop-blur-md animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-600/30 border border-red-500/60 flex items-center justify-center text-red-400 shrink-0">
+              <MicOff size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-black text-white">Microphone Permission Needed</h4>
+              <p className="text-xs text-red-200 mt-1 leading-relaxed">{permissionError}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    dynamicIslandVoiceManager.clearPermissionError();
+                    toggleMicSession();
+                  }}
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Allow & Retry
+                </button>
+                <button
+                  onClick={() => dynamicIslandVoiceManager.clearPermissionError()}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real-Time Live Speech-to-Text & Feedback Banner */}
+      {isMicActive && (liveTranscript || lastHeardCommand) && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 bg-neutral-950/95 border border-emerald-500/60 rounded-full text-white text-xs font-mono flex items-center gap-2 shadow-2xl backdrop-blur-md animate-fade-in max-w-[90vw] truncate">
+          <Mic size={14} className="text-emerald-400 animate-pulse shrink-0" />
+          <span className="text-emerald-300 font-bold truncate">
+            {lastHeardCommand?.startsWith('✅') || lastHeardCommand?.startsWith('❌') || lastHeardCommand?.startsWith('⚡') || lastHeardCommand?.startsWith('💤') || lastHeardCommand?.startsWith('⏩')
+              ? lastHeardCommand
+              : `Heard: "${liveTranscript || lastHeardCommand}"`}
+          </span>
           <button 
             onClick={() => dynamicIslandVoiceManager.clearLastCommand()}
-            className="text-gray-400 hover:text-white text-xs ml-1"
+            className="text-gray-400 hover:text-white text-sm ml-1 px-1 cursor-pointer shrink-0"
+            title="Clear"
           >
             ×
           </button>

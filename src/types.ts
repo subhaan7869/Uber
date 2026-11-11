@@ -15,7 +15,7 @@ export interface Order {
   estimatedPay: number;
   estimatedDistance: number;
   estimatedTime: number;
-  status: 'pending' | 'accepted' | 'picked_up' | 'delivered' | 'en_route_to_pickup' | 'on_ride' | 'arriving' | 'arrived' | 'returning_to_restaurant' | 'scanning_receipt';
+  status: 'pending' | 'accepted' | 'preparing_pickup' | 'en_route_to_pickup' | 'arrived_at_pickup' | 'picked_up' | 'on_ride' | 'arriving' | 'arrived' | 'delivered' | 'returning_to_restaurant' | 'scanning_receipt';
   customerName: string;
   items?: string[];
   pin?: string;

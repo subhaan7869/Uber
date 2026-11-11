@@ -21,7 +21,8 @@ import {
   X,
   Mic,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  PowerOff
 } from 'lucide-react';
 import { UserProfile, DestinationFilter } from '../types';
 import { DynamicIslandAndVoice } from './DynamicIslandAndVoice';
@@ -30,6 +31,8 @@ interface OfflineHomeScreenProps {
   user: UserProfile;
   activeCityKey: string;
   onGoOnline: () => void;
+  onGoOffline?: () => void;
+  onToggleOnline?: () => void;
   onOpenPreferences: () => void;
   onOpenOpportunities: () => void;
   onOpenSafetyToolkit: () => void;
@@ -49,6 +52,8 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
   user,
   activeCityKey,
   onGoOnline,
+  onGoOffline,
+  onToggleOnline,
   onOpenPreferences,
   onOpenOpportunities,
   onOpenSafetyToolkit,
@@ -95,8 +100,13 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
           <DynamicIslandAndVoice
             isOnline={user?.isOnline ?? false}
             pendingOrder={null}
-            todayEarningsTotal={user.earningsStats?.daily || 0}
-            onToggleOnline={onGoOnline}
+            onToggleOnline={onToggleOnline || (() => {
+              if (user?.isOnline) {
+                if (onGoOffline) onGoOffline();
+              } else {
+                if (onGoOnline) onGoOnline();
+              }
+            })}
           />
 
           {onOpenLayers && (
@@ -152,23 +162,63 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
         <div>
           <button 
             onClick={onOpenPreferences}
-            className="group text-left w-full focus:outline-none"
+            className="group text-left w-full focus:outline-none cursor-pointer"
           >
             <div className="flex items-center justify-between">
-              <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
-                {user.isOnline ? "You're online" : "You're offline"}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
+                  {user.isOnline ? "You're online" : "You're offline"}
+                </h1>
+                {user.isOnline && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Live
+                  </span>
+                )}
+              </div>
               <div className="p-2 bg-gray-100 rounded-full group-hover:bg-blue-50 transition-colors">
                 <SlidersHorizontal size={18} className="text-gray-600 group-hover:text-blue-600" />
               </div>
             </div>
             <p className="text-base font-bold text-gray-500 mt-1">
-              {user.isOnline ? "Finding trips..." : "Ready to go?"}
+              {user.isOnline ? "Searching for jobs & rider requests..." : "Ready to go?"}
             </p>
           </button>
-          <p className="text-xs text-gray-400 mt-1 font-medium leading-relaxed">
-            {user.isOnline ? "You are currently receiving trip requests. Tap below to view the live map." : "When offline, you won't receive trip requests. Configure preferences or tap below to go online."}
-          </p>
+          
+          {/* Current Demand Level Display (Shown when driver goes online) */}
+          {user.isOnline ? (
+            <div className="mt-3 p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-red-500/10 border border-orange-500/30 shadow-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500/20 text-orange-600 border border-orange-500/40 flex items-center justify-center shrink-0">
+                  <Flame size={20} className="fill-orange-500 text-orange-500 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-orange-800">Live Demand Level</span>
+                    <span className="px-1.5 py-0.5 rounded bg-orange-600 text-white text-[9px] font-black uppercase font-mono">
+                      High • 1.4x Surge
+                    </span>
+                  </div>
+                  <h4 className="text-xs font-black text-neutral-900 mt-0.5 truncate">
+                    {activeCityKey} Area • Estimated wait time: 1–5 mins
+                  </h4>
+                  <p className="text-[10px] text-gray-500 font-medium">Automatic trip radar active. Offers will pop up automatically.</p>
+                </div>
+              </div>
+              {onOpenMap && (
+                <button
+                  onClick={onOpenMap}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors shrink-0 cursor-pointer shadow-xs"
+                >
+                  Map ➔
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 mt-1 font-medium leading-relaxed">
+              When offline, you won't receive trip requests. Configure preferences or tap below to go online.
+            </p>
+          )}
         </div>
 
         {/* Dynamic Island Mic & Hands-Free Mode (Phone Version Card) */}
@@ -441,16 +491,34 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
               </p>
             </div>
 
-            {/* Embedded Go Online Button */}
+            {/* Embedded Go Online / Go Offline Button */}
             <button 
               onClick={() => {
-                if (user.isOnline && onOpenMap) onOpenMap();
-                else onGoOnline();
+                if (user.isOnline) {
+                  if (onGoOffline) onGoOffline();
+                  else if (onToggleOnline) onToggleOnline();
+                } else {
+                  if (onGoOnline) onGoOnline();
+                  else if (onToggleOnline) onToggleOnline();
+                }
               }}
-              className="w-full py-4 bg-[#1f52e3] hover:bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wider shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] cursor-pointer"
+              className={`w-full py-4 text-white rounded-2xl font-black text-base uppercase tracking-wider shadow-lg flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] cursor-pointer ${
+                user.isOnline 
+                  ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' 
+                  : 'bg-[#1f52e3] hover:bg-blue-600 shadow-blue-600/30'
+              }`}
             >
-              <Navigation size={18} className="fill-white" style={{ transform: 'rotate(45deg)' }} />
-              <span>{user.isOnline ? "Return to Map" : "Go Online"}</span>
+              {user.isOnline ? (
+                <>
+                  <PowerOff size={18} />
+                  <span>Go Offline</span>
+                </>
+              ) : (
+                <>
+                  <Navigation size={18} className="fill-white" style={{ transform: 'rotate(45deg)' }} />
+                  <span>Go Online</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -515,17 +583,45 @@ export const OfflineHomeScreen: React.FC<OfflineHomeScreenProps> = ({
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="shrink-0 p-4 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-20">
+      <div className="shrink-0 p-4 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-20 flex gap-2">
         <button 
           onClick={() => {
-            if (user.isOnline && onOpenMap) onOpenMap();
-            else onGoOnline();
+            if (user.isOnline) {
+              if (onGoOffline) onGoOffline();
+              else if (onToggleOnline) onToggleOnline();
+            } else {
+              if (onGoOnline) onGoOnline();
+              else if (onToggleOnline) onToggleOnline();
+            }
           }}
-          className="w-full py-4 bg-[#1f52e3] hover:bg-blue-600 text-white rounded-full font-black text-lg uppercase tracking-wider shadow-xl shadow-blue-600/30 flex items-center justify-center gap-3 transition-all active:scale-[0.98] cursor-pointer"
+          className={`flex-1 py-4 text-white rounded-full font-black text-lg uppercase tracking-wider shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] cursor-pointer ${
+            user.isOnline 
+              ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' 
+              : 'bg-[#1f52e3] hover:bg-blue-600 shadow-blue-600/30'
+          }`}
         >
-          <Navigation size={22} className="fill-white" style={{ transform: 'rotate(45deg)' }} />
-          <span>{user.isOnline ? "Return to Map" : "Go Online"}</span>
+          {user.isOnline ? (
+            <>
+              <PowerOff size={22} />
+              <span>Go Offline</span>
+            </>
+          ) : (
+            <>
+              <Navigation size={22} className="fill-white" style={{ transform: 'rotate(45deg)' }} />
+              <span>Go Online</span>
+            </>
+          )}
         </button>
+        {user.isOnline && onOpenMap && (
+          <button
+            onClick={onOpenMap}
+            className="px-5 py-4 bg-neutral-900 hover:bg-black text-white rounded-full font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
+            title="View Live Driver Map"
+          >
+            <span>Map</span>
+            <ChevronRight size={18} />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -7,24 +7,31 @@ export interface CommandHandlers {
   onAcceptOrder?: () => void;
   onDeclineOrder?: () => void;
   onToggleOnline?: () => void;
+  onNextWorkflowStep?: () => void;
   isOnline?: boolean;
 }
 
 export interface DynamicIslandVoiceState {
   isMicActive: boolean;
+  isListening: boolean;
   micAudioLevel: number;
   lastHeardCommand: string | null;
+  liveTranscript: string;
   speechSupported: boolean;
   isPipActive: boolean;
   hasLiveStream: boolean;
+  permissionError: string | null;
 }
 
 class DynamicIslandVoiceManager {
   private isMicActive: boolean = false;
+  private isListening: boolean = false;
   private micAudioLevel: number = 0;
   private lastHeardCommand: string | null = null;
+  private liveTranscript: string = '';
   private speechSupported: boolean = true;
   private isPipActive: boolean = false;
+  private permissionError: string | null = null;
 
   private mediaStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
@@ -35,17 +42,20 @@ class DynamicIslandVoiceManager {
   private listeners: Set<VoiceListener> = new Set();
   private handlers: CommandHandlers = {};
 
-  // Cached immutable snapshot reference to guarantee reference equality between store emissions
+  // Cached immutable snapshot reference to guarantee reference equality for React useSyncExternalStore
   private snapshot: DynamicIslandVoiceState;
 
   constructor() {
     this.snapshot = {
       isMicActive: false,
+      isListening: false,
       micAudioLevel: 0,
       lastHeardCommand: null,
+      liveTranscript: '',
       speechSupported: true,
       isPipActive: false,
-      hasLiveStream: false
+      hasLiveStream: false,
+      permissionError: null
     };
 
     if (typeof window !== 'undefined') {
@@ -53,13 +63,15 @@ class DynamicIslandVoiceManager {
       this.speechSupported = !!SpeechRec;
       this.updateSnapshot();
 
-      // Handle visibility changes safely (iOS Safari rules)
+      // Handle visibility changes safely (iOS Safari & Android PWA rules)
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
           // Pause speech recognition in background to satisfy iOS Safari restrictions
           if (this.recognition) {
             try { this.recognition.stop(); } catch (e) {}
           }
+          this.isListening = false;
+          this.updateSnapshot();
         } else if (document.visibilityState === 'visible' && this.isMicActive) {
           // Resume audio context & speech recognition when returning to app
           if (this.audioContext && this.audioContext.state === 'suspended') {
@@ -76,11 +88,14 @@ class DynamicIslandVoiceManager {
   private updateSnapshot() {
     this.snapshot = {
       isMicActive: this.isMicActive,
+      isListening: this.isListening && !!(this.mediaStream && this.mediaStream.active),
       micAudioLevel: this.micAudioLevel,
       lastHeardCommand: this.lastHeardCommand,
+      liveTranscript: this.liveTranscript,
       speechSupported: this.speechSupported,
       isPipActive: this.isPipActive,
-      hasLiveStream: !!(this.mediaStream && this.mediaStream.active)
+      hasLiveStream: !!(this.mediaStream && this.mediaStream.active),
+      permissionError: this.permissionError
     };
     this.listeners.forEach(fn => fn());
   }
@@ -108,12 +123,14 @@ class DynamicIslandVoiceManager {
   }
 
   public async startMicSession(): Promise<boolean> {
+    this.permissionError = null;
+
     try {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Microphone not supported on this browser');
+        throw new Error('Microphone audio is not supported in this browser.');
       }
 
-      // 1. Acquire MediaStream with active user gesture
+      // 1. Request microphone permission with active user tap
       let stream = this.mediaStream;
       if (!stream || !stream.active || stream.getAudioTracks().length === 0 || stream.getAudioTracks()[0].readyState === 'ended') {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -157,11 +174,24 @@ class DynamicIslandVoiceManager {
       this.startSpeechRecognition();
 
       this.isMicActive = true;
+      this.isListening = true;
+      this.permissionError = null;
       localStorage.setItem('hyper_dynamic_island_mic', 'true');
       this.updateSnapshot();
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Microphone permission or hardware access failed:', err);
+      
+      let userFriendlyMsg = 'Could not access microphone.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        userFriendlyMsg = 'Microphone permission was denied. Please allow microphone access in your browser or device settings (Settings ➔ Safari/Chrome ➔ Microphone) to use voice commands.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        userFriendlyMsg = 'No microphone hardware found on this device.';
+      } else if (err.message) {
+        userFriendlyMsg = err.message;
+      }
+
+      this.permissionError = userFriendlyMsg;
       this.stopMicSession();
       return false;
     }
@@ -180,8 +210,8 @@ class DynamicIslandVoiceManager {
       }
       const avg = sum / (dataArray.length || 1);
       const nextLevel = Math.min(100, Math.round((avg / 128) * 100));
-      // Only trigger snapshot update if level changed significantly (avoid micro re-renders)
-      if (Math.abs(nextLevel - this.micAudioLevel) >= 5) {
+
+      if (Math.abs(nextLevel - this.micAudioLevel) >= 4) {
         this.micAudioLevel = nextLevel;
         this.updateSnapshot();
       }
@@ -192,7 +222,12 @@ class DynamicIslandVoiceManager {
   }
 
   private startSpeechRecognition() {
-    if (!this.speechSupported || typeof window === 'undefined') return;
+    if (!this.speechSupported || typeof window === 'undefined') {
+      this.isListening = true;
+      this.updateSnapshot();
+      return;
+    }
+
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRec) return;
 
@@ -207,13 +242,20 @@ class DynamicIslandVoiceManager {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
+      recognition.onstart = () => {
+        this.isListening = true;
+        this.updateSnapshot();
+      };
+
       recognition.onresult = (event: any) => {
         const last = event.results.length - 1;
         const transcript = event.results[last][0].transcript.toLowerCase().trim();
+        this.liveTranscript = transcript;
         this.lastHeardCommand = transcript;
         this.updateSnapshot();
 
-        if (transcript.includes('accept') || transcript.includes('take it') || transcript.includes('yes')) {
+        // Voice Command Parsing:
+        if (transcript.includes('accept') || transcript.includes('take it') || transcript.includes('yes') || transcript.includes('take order')) {
           if (this.handlers.onAcceptOrder) {
             this.handlers.onAcceptOrder();
             this.lastHeardCommand = '✅ Accepted Order';
@@ -225,16 +267,22 @@ class DynamicIslandVoiceManager {
             this.lastHeardCommand = '❌ Declined Order';
             this.updateSnapshot();
           }
-        } else if (transcript.includes('go online') || transcript.includes('online')) {
+        } else if (transcript.includes('go online') || transcript.includes('start shift')) {
           if (this.handlers.onToggleOnline && !this.handlers.isOnline) {
             this.handlers.onToggleOnline();
             this.lastHeardCommand = '⚡ Went Online';
             this.updateSnapshot();
           }
-        } else if (transcript.includes('go offline') || transcript.includes('offline')) {
+        } else if (transcript.includes('go offline') || transcript.includes('end shift') || transcript.includes('offline')) {
           if (this.handlers.onToggleOnline && this.handlers.isOnline) {
             this.handlers.onToggleOnline();
             this.lastHeardCommand = '💤 Went Offline';
+            this.updateSnapshot();
+          }
+        } else if (transcript.includes('next step') || transcript.includes('next') || transcript.includes('advance') || transcript.includes('arrived') || transcript.includes('collected') || transcript.includes('complete')) {
+          if (this.handlers.onNextWorkflowStep) {
+            this.handlers.onNextWorkflowStep();
+            this.lastHeardCommand = '⏩ Advanced Job Stage';
             this.updateSnapshot();
           }
         }
@@ -244,18 +292,26 @@ class DynamicIslandVoiceManager {
         if (e.error === 'not-allowed' && document.visibilityState === 'hidden') {
           return;
         }
+        if (e.error === 'not-allowed') {
+          this.permissionError = 'Microphone permission was not allowed for Speech Recognition.';
+          this.updateSnapshot();
+        }
       };
 
       recognition.onend = () => {
-        // Only restart if still active and page is visible!
+        // Only restart if still active and page is visible
         if (this.isMicActive && this.mediaStream && document.visibilityState === 'visible') {
           try { recognition.start(); } catch (e) {}
+        } else {
+          this.isListening = false;
+          this.updateSnapshot();
         }
       };
 
       if (document.visibilityState === 'visible') {
         recognition.start();
         this.recognition = recognition;
+        this.isListening = true;
       }
     } catch (e) {
       console.warn('SpeechRecognition failed to start:', e);
@@ -264,7 +320,9 @@ class DynamicIslandVoiceManager {
 
   public stopMicSession() {
     this.isMicActive = false;
+    this.isListening = false;
     this.micAudioLevel = 0;
+    this.liveTranscript = '';
     localStorage.setItem('hyper_dynamic_island_mic', 'false');
 
     if (this.animFrameId) {
@@ -290,6 +348,11 @@ class DynamicIslandVoiceManager {
     this.updateSnapshot();
   }
 
+  public clearPermissionError() {
+    this.permissionError = null;
+    this.updateSnapshot();
+  }
+
   public setPipActive(active: boolean) {
     if (this.isPipActive !== active) {
       this.isPipActive = active;
@@ -298,8 +361,9 @@ class DynamicIslandVoiceManager {
   }
 
   public clearLastCommand() {
-    if (this.lastHeardCommand !== null) {
+    if (this.lastHeardCommand !== null || this.liveTranscript !== '') {
       this.lastHeardCommand = null;
+      this.liveTranscript = '';
       this.updateSnapshot();
     }
   }

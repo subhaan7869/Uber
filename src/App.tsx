@@ -123,6 +123,7 @@ import { CompanionChat } from './components/CompanionChat';
 import { MultiplayerHub, OtherDriver } from './components/MultiplayerHub';
 import { CommandCentreScreen } from './components/CommandCentreScreen';
 import { OfflineHomeScreen } from './components/OfflineHomeScreen';
+import { ActiveJobWorkflowCard, getWorkflowStage } from './components/ActiveJobWorkflowCard';
 import { CarPlaySystem } from './components/CarPlaySystem';
 import { DynamicIslandAndVoice } from './components/DynamicIslandAndVoice';
 import { AddressSearchModal } from './components/AddressSearchModal';
@@ -766,21 +767,18 @@ const OrderDetailsModal = ({
         >
           <MessageSquare size={24} />
         </button>
-        {isActionAllowed(order.id) ? (
-          <button 
-            onClick={() => onNextStep(order.id)}
-            className="flex-1 py-5 bg-black text-white rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-transform"
-          >
-            {order.status === 'accepted' ? (order.type === 'ride' ? 'START TRIP' : 'START PICKUP') : 'COMPLETE DELIVERY'}
-          </button>
-        ) : (
-          <button 
-            disabled
-            className="flex-1 py-5 bg-gray-500/10 text-gray-500/50 rounded-2xl font-black text-xl cursor-not-allowed border border-white/5"
-          >
-            {order.status === 'accepted' ? 'PICKUP LOCKED' : 'DELIVERY LOCKED'}
-          </button>
-        )}
+        {(() => {
+          const stage = getWorkflowStage(order);
+          return (
+            <button 
+              onClick={() => onNextStep(order.id)}
+              className={`flex-1 py-5 rounded-2xl font-black text-base sm:text-lg shadow-xl active:scale-95 transition-transform text-white ${stage.actionColor} flex items-center justify-center gap-2 cursor-pointer`}
+            >
+              <span>{stage.actionLabel}</span>
+              <ChevronRight size={20} />
+            </button>
+          );
+        })()}
       </div>
     </motion.div>
   );
@@ -12308,7 +12306,8 @@ export default function App() {
 
   const isInsuranceExpired = insuranceDaysLeft !== null && insuranceDaysLeft <= 0;
 
-  const handleGoOnline = () => {
+  const handleGoOnline = (stayOnHomeScreen: boolean | any = false) => {
+    const stay = stayOnHomeScreen === true;
     if (isInsuranceExpired) {
       setIsInsuranceRenewalChatOpen(true);
       sendNotification("Action Required", "Your vehicle insurance is expiring today. You must renew to stay online.", "alert");
@@ -12320,7 +12319,7 @@ export default function App() {
       return;
     }
     if (user.faceVerified) {
-      startShift();
+      startShift(stay);
     } else {
       setIsVerifyingToOnline(true);
       playHyperSound('order');
@@ -12328,9 +12327,13 @@ export default function App() {
     }
   };
 
-  const startShift = () => {
+  const startShift = (stayOnHomeScreen: boolean = false) => {
     setUser(u => ({ ...u, isOnline: true }));
-    setShowFullMap(true);
+    if (!stayOnHomeScreen) {
+      setShowFullMap(true);
+    } else {
+      setShowFullMap(false);
+    }
     setUberOnline(true);
     setHyperOnline(true);
     setIsOnBreak(false);
@@ -12686,74 +12689,117 @@ export default function App() {
     initialTouchDistanceRef.current = null;
   };
 
+  const advancingOrderStepRef = useRef<Record<string, number>>({});
+
   const handleNextStep = (orderId: string) => {
     const order = activeOrders.find(o => o.id === orderId);
     if (!order) return;
 
-    // Check if it's a delivery pickup, and we need to roll the preparing timer
-    if (order.status === 'accepted' && order.type === 'delivery') {
-      if (!triggeredPrepOrders[orderId]) {
-        // 45% chance of being delayed (restaurant still preparing)
-        if (Math.random() < 0.45) {
-          const randomTime = Math.floor(Math.random() * 21) + 15; // 15 to 35 seconds
-          setPreparingOrders(prev => ({ ...prev, [orderId]: randomTime }));
-          setTriggeredPrepOrders(prev => ({ ...prev, [orderId]: true }));
-          sendNotification("Preparing Order", `Restaurant is still preparing the order. Wait: ${randomTime}s`, "info");
-          addToast("Still Preparing", `Greggs is cooking. Estimated wait: ${randomTime}s`, "info");
-          playHyperSound('radar');
-          return; // Block pickup progression!
-        } else {
-          // Immediately marked as triggered with no wait duration
-          setTriggeredPrepOrders(prev => ({ ...prev, [orderId]: true }));
-        }
-      } else if (preparingOrders[orderId] && preparingOrders[orderId] > 0) {
-        // Still preparing, block confirm pickup click!
-        addToast("Store Preparing", `Please wait for Greggs to complete order preparation (${preparingOrders[orderId]}s remaining).`, "info");
-        return;
-      }
+    // Prevent accidental duplicate confirmations (300ms debounce)
+    const now = Date.now();
+    if (advancingOrderStepRef.current[orderId] && (now - advancingOrderStepRef.current[orderId] < 300)) {
+      return;
     }
+    advancingOrderStepRef.current[orderId] = now;
 
+    // Stage 1 -> Stage 2: Accepted -> Prepare for pickup
     if (order.status === 'accepted') {
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'preparing_pickup' } : o));
+      playHyperSound('accept');
+      triggerUberHaptic('tap');
+      sendNotification("Prepare for Pickup", order.type === 'ride' ? `Reviewing pickup details for ${order.customerName}` : `Reviewing pickup at ${order.restaurantName}`);
+      speakNav(order.type === 'ride' ? `Trip confirmed. Prepare for pickup of ${order.customerName}.` : `Order confirmed. Prepare for pickup at ${order.restaurantName}.`);
+    }
+    // Stage 2 -> Stage 3: Prepare for pickup -> Navigate to pickup
+    else if (order.status === 'preparing_pickup') {
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'en_route_to_pickup' } : o));
+      setIsNavigating(true);
+      setIsSimulatingMovement(true);
+      
+      const targetPos = order.pickupLocation 
+        ? { lat: order.pickupLocation.latitude, lng: order.pickupLocation.longitude }
+        : location ? { lat: location.latitude, lng: location.longitude } : { lat: 51.5074, lng: -0.1278 };
+
+      if (location) {
+        setNavSimulation({
+          active: true,
+          orderId: order.id,
+          type: 'pickup',
+          startPos: { lat: location.latitude, lng: location.longitude },
+          endPos: targetPos,
+          currentPos: { lat: location.latitude, lng: location.longitude },
+          progress: 0,
+          distanceRemaining: order.estimatedDistance / 2,
+          eta: order.estimatedTime / 2,
+          speed: 25
+        });
+      }
+      playHyperSound('radar');
+      triggerUberHaptic('tap');
+      sendNotification("Navigating to Pickup", order.type === 'ride' ? `En route to ${order.customerName}` : `En route to ${order.restaurantName}`);
+      speakNav(`Routing navigation to pickup location.`);
+    }
+    // Stage 3 -> Stage 4: Navigate to pickup -> Arrived at pickup
+    else if (order.status === 'en_route_to_pickup') {
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'arrived_at_pickup' } : o));
+      playHyperSound('complete');
+      triggerUberHaptic('accept');
+      sendNotification("Arrived at Pickup", order.type === 'ride' ? `Arrived! Waiting for passenger ${order.customerName}` : `Arrived at ${order.restaurantName}. Ready to collect.`);
+      speakNav(order.type === 'ride' ? `Arrived at pickup location for ${order.customerName}.` : `Arrived at ${order.restaurantName}. Please collect items.`);
+    }
+    // Stage 4 -> Stage 5: Arrived at pickup -> Confirm pickup
+    else if (order.status === 'arrived_at_pickup') {
       if (order.type === 'delivery' && order.receiptRequired && !order.receiptVerified) {
         setIsScanningReceipt(orderId);
         setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'scanning_receipt' } : o));
       } else {
         setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'picked_up' } : o));
-        
-        // Trigger navigation to customer
-        if (order.dropoffPos && location) {
-          setIsNavigating(true);
-          setNavSimulation({
-            active: true,
-            orderId: order.id,
-            type: 'dropoff',
-            startPos: { lat: location.latitude, lng: location.longitude },
-            endPos: order.dropoffPos,
-            currentPos: { lat: location.latitude, lng: location.longitude },
-            progress: 0,
-            distanceRemaining: order.estimatedDistance / 2,
-            eta: order.estimatedTime / 2,
-            speed: 20 + Math.random() * 10
-          });
-        }
-
-        const msg = order.type === 'ride' ? `Rider ${order.customerName} picked up` : `Order from ${order.restaurantName} picked up`;
-        sendNotification(order.type === 'ride' ? "Trip Started" : "Order Picked Up", msg);
         playHyperSound('accept');
-        speakNav(order.type === 'ride' ? `Passenger on board. Routing path to dropoff destination for ${order.customerName}.` : `Goods secured. Routing path to delivery address of ${order.customerName}.`);
+        triggerUberHaptic('tap');
+        sendNotification(order.type === 'ride' ? "Passenger On Board" : "Order Collected", order.type === 'ride' ? `${order.customerName} boarded vehicle.` : `Collected items from ${order.restaurantName}.`);
+        speakNav(order.type === 'ride' ? `Passenger on board. Ready to begin destination route.` : `Order confirmed in vehicle. Ready to navigate to delivery.`);
       }
-    } else if (order.status === 'scanning_receipt') {
-        setIsScanningReceipt(orderId);
-    } else if (order.status === 'picked_up') {
-      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'arriving' as any } : o));
-      setIsSimulatingMovement(true);
+    }
+    // Stage 5 -> Stage 6: Confirm pickup -> Navigate to destination
+    else if (order.status === 'picked_up' || order.status === 'scanning_receipt') {
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'on_ride' } : o));
       setIsNavigating(true);
-    } else if (order.status === 'arriving' || order.status === 'arrived') {
-       if (order.verificationMethod === 'none') {
-         handleCompleteDelivery(orderId);
-       } else {
-         setVerifyingDeliveryId(orderId);
-       }
+      setIsSimulatingMovement(true);
+
+      if (order.dropoffPos && location) {
+        setNavSimulation({
+          active: true,
+          orderId: order.id,
+          type: 'dropoff',
+          startPos: { lat: location.latitude, lng: location.longitude },
+          endPos: order.dropoffPos,
+          currentPos: { lat: location.latitude, lng: location.longitude },
+          progress: 0,
+          distanceRemaining: order.estimatedDistance / 2,
+          eta: order.estimatedTime / 2,
+          speed: 25
+        });
+      }
+      playHyperSound('radar');
+      triggerUberHaptic('tap');
+      sendNotification("Navigating to Destination", `Routing to ${order.customerName}'s dropoff.`);
+      speakNav(`Navigating to customer destination.`);
+    }
+    // Stage 6 -> Stage 7: Navigate to destination -> Arrived at destination
+    else if (order.status === 'on_ride') {
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'arrived' } : o));
+      playHyperSound('complete');
+      triggerUberHaptic('accept');
+      sendNotification("Arrived at Destination", `Ready to complete job for ${order.customerName}.`);
+      speakNav(`Arrived at destination for ${order.customerName}. Ready to complete job.`);
+    }
+    // Stage 7: Arrived at destination -> Complete job
+    else if (order.status === 'arrived' || (order.status as any) === 'arriving') {
+      if (order.verificationMethod && order.verificationMethod !== 'none') {
+        setVerifyingDeliveryId(orderId);
+      } else {
+        handleCompleteDelivery(orderId);
+      }
     }
   };
 
@@ -13471,8 +13517,17 @@ export default function App() {
                     user={user}
                     activeCityKey={activeCityKey}
                     onGoOnline={() => {
-                      handleGoOnline();
-                      setShowFullMap(true);
+                      handleGoOnline(true);
+                    }}
+                    onGoOffline={() => {
+                      endShift();
+                    }}
+                    onToggleOnline={() => {
+                      if (user.isOnline) {
+                        endShift();
+                      } else {
+                        handleGoOnline(true);
+                      }
                     }}
                     onOpenPreferences={() => setCurrentScreen('trip_preferences')}
                     onOpenOpportunities={() => setCurrentScreen('opportunities')}
@@ -15457,10 +15512,12 @@ export default function App() {
                       <DynamicIslandAndVoice
                         isOnline={user.isOnline}
                         pendingOrder={pendingOrder}
+                        activeOrder={currentOrder}
                         onAcceptOrder={handleAcceptOrder}
                         onDeclineOrder={handleDeclineOrder}
+                        onNextWorkflowStep={() => currentOrder && handleNextStep(currentOrder.id)}
                         todayEarningsTotal={earnings}
-                        onToggleOnline={handleGoOnline}
+                        onToggleOnline={() => user.isOnline ? endShift() : handleGoOnline()}
                       />
 
                       <button 
@@ -15759,7 +15816,7 @@ export default function App() {
                       <div className="absolute -inset-2 rounded-full border-[2px] border-[#1f52e3]/45 pointer-events-none" />
                       
                       <button
-                        onClick={handleGoOnline}
+                        onClick={() => handleGoOnline()}
                         className="relative w-20 h-20 rounded-full bg-[#1f52e3] hover:bg-blue-600 active:scale-95 text-white flex items-center justify-center font-sans font-black text-2xl uppercase tracking-tight border-[4px] border-white shadow-[0_8px_30px_rgba(31,82,227,0.4)] transition-all duration-300"
                       >
                         GO
@@ -16234,134 +16291,36 @@ export default function App() {
                       
                       return [];
                     })().map((order, idx) => (
-                    <motion.div 
-                      key={`interactive-bottom-card-${order.id}-${idx}`} 
-                      initial={{ y: 50, opacity: 0 }} 
-                      animate={{ y: 0, opacity: 1 }} 
-                      exit={{ y: 50, opacity: 0 }}
-                      className={`bg-slate-900/95 text-white rounded-2xl shadow-2xl p-2.5 sm:p-3 mb-1.5 cursor-pointer active:scale-[0.98] transition-transform pointer-events-auto border border-blue-500/30 backdrop-blur-md ${order.id === currentOrder?.id ? 'ring-2 ring-blue-500/50' : ''}`}
-                      onClick={() => setViewingOrderDetailsId(order.id)}
-                    >
-                      {/* Compact Header Badge */}
-                      <div className="flex items-center justify-between gap-2 mb-1.5 px-0.5">
-                        <div className="flex items-center gap-1.5">
-                          {order.id === currentOrder?.id && (
-                            <span className="px-2 py-0.5 bg-blue-600 text-white rounded-full text-[8px] font-black uppercase tracking-wider">
-                              Task {idx + 1}
-                            </span>
-                          )}
-                          <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1">
-                            <Navigation size={10} />
-                            {order.status === 'accepted' ? `Pickup: ${order.restaurantName}` : `Dropoff: ${order.customerName}`}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-bold text-gray-400">{distanceToTarget(order)} mi</span>
-                      </div>
-                      
-                      {/* Compact Content Row */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                            {order.status === 'accepted' ? <Coffee size={16} /> : <User size={16} />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-extrabold text-xs truncate leading-tight text-white">{order.status === 'accepted' ? order.restaurantName : order.customerName}</h3>
-                            <p className="text-[10px] text-gray-400 truncate font-medium">
-                              {(order.items?.length || 0)} items • <span className="text-emerald-400 font-extrabold">£{order.estimatedPay.toFixed(2)}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          {order.status === 'returning_to_restaurant' ? (
-                            <button 
-                              onClick={() => {
-                                setActiveOrders(prev => prev.filter(o => o.id !== order.id));
-                                sendNotification("Order Returned", `Order from ${order.restaurantName} returned successfully.`);
-                              }}
-                              className="px-2.5 py-1 bg-red-600 text-white rounded-lg font-black text-[9px] uppercase tracking-wider active:scale-95 transition-transform"
-                            >
-                              RETURNED
-                            </button>
-                          ) : (
-                            <>
-                              <button 
-                                onClick={() => setCancellingOrderId(order.id)} 
-                                className="w-7 h-7 rounded-full flex items-center justify-center bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 active:scale-95 transition-all"
-                                title="Cancel Order"
-                              >
-                                <X size={14} />
-                              </button>
-                              <button 
-                                onClick={() => { setActiveChatOrderId(order.id); setCurrentScreen('chat'); }} 
-                                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white border border-white/10 active:scale-95 transition-all"
-                                title="Chat with Customer"
-                              >
-                                <MessageSquare size={14} />
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  if (!isNavigating) {
-                                    sendDestinationToPC({ order });
-                                  } else {
-                                    setIsNavigating(false);
-                                  }
-                                }} 
-                                className={`px-2.5 py-1 ${isNavigating ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'} text-white rounded-lg font-black text-[9px] uppercase tracking-wider flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer`}
-                                title={isNavigating ? "Exit Turn-by-Turn Mode" : "Navigate & Send Destination to PC Map"}
-                              >
-                                <Navigation size={11} className={isNavigating ? "animate-pulse" : ""} />
-                                <span>{isNavigating ? 'Nav On (PC Synced)' : 'Navigate'}</span>
-                              </button>
-                              {preparingOrders[order.id] && preparingOrders[order.id] > 0 ? (
-                                <button 
-                                  disabled
-                                  className="px-2.5 py-1 bg-orange-600 border border-orange-500 text-white rounded-lg font-black text-[9px] uppercase tracking-wider animate-pulse flex items-center gap-1 select-none"
-                                >
-                                  <span>⏳</span>
-                                  <span>Prep: {preparingOrders[order.id]}s</span>
-                                </button>
-                              ) : isActionAllowed(order.id) ? (
-                                (() => {
-                                  const distVal = parseFloat(distanceToTarget(order));
-                                  const isNearby = distVal <= 0.15;
-                                  
-                                  if (!isNearby) {
-                                    return (
-                                      <button 
-                                        disabled
-                                        className="px-2 py-1 rounded-lg font-black text-[8px] uppercase tracking-tight bg-amber-500/10 border border-amber-500/30 text-amber-400 cursor-not-allowed select-none opacity-90 max-w-[110px] truncate"
-                                        title={`You must arrive at the destination to complete this. Current distance: ${distVal.toFixed(2)} mi`}
-                                      >
-                                        Locked ({distVal.toFixed(1)}mi)
-                                      </button>
-                                    );
-                                  }
-                                  
-                                  return (
-                                    <button 
-                                      onClick={() => handleNextStep(order.id)} 
-                                      className="px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wider bg-blue-600 text-white shadow-md active:scale-95 transition-transform hover:bg-blue-500"
-                                    >
-                                      {order.status === 'accepted' ? 'Confirm Pickup' : 'Complete'}
-                                    </button>
-                                  );
-                                })()
-                              ) : (
-                                <button 
-                                  disabled
-                                  className="px-2 py-1 rounded-lg font-black text-[8px] uppercase tracking-wider bg-white/5 text-gray-400 cursor-not-allowed border border-white/10"
-                                >
-                                  {order.status === 'accepted' ? 'Pickup Locked' : 'Delivery Locked'}
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                      <motion.div 
+                        key={`interactive-workflow-card-${order.id}-${idx}`} 
+                        initial={{ y: 50, opacity: 0 }} 
+                        animate={{ y: 0, opacity: 1 }} 
+                        exit={{ y: 50, opacity: 0 }}
+                      >
+                        <ActiveJobWorkflowCard
+                          order={order}
+                          distanceToTarget={distanceToTarget(order)}
+                          isNavigating={isNavigating}
+                          onNextStep={handleNextStep}
+                          onNavigateToggle={(ord) => {
+                            if (!isNavigating) {
+                              sendDestinationToPC({ order: ord });
+                              setIsNavigating(true);
+                            } else {
+                              setIsNavigating(false);
+                            }
+                          }}
+                          onOpenChat={(id) => {
+                            setActiveChatOrderId(id);
+                            setCurrentScreen('chat');
+                          }}
+                          onCancel={(id) => setCancellingOrderId(id)}
+                          onViewDetails={(id) => setViewingOrderDetailsId(id)}
+                          theme={theme}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
               </div>
             )}
 
